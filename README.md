@@ -22,18 +22,18 @@ General combinators for working with this idea of succession irrespective of the
 A freely generated stream of connected individual Haskell values is a Producer, Generator or Source
 ---------------------------------------------------------------------------------------------------
 
-But, of course, as soon as you grasp the general form of *succession/, you are already in possession of the most basic concrete form: a simple *succession of individual Haskell values\_ one after another. This is just `Stream ((,) a) m r`, or as we write it here, `Stream (Of a) m r`, strictifying the left element of the pair. The pairing just links the present element with the rest of the stream. The primitive `yield` statement just expresses the pairing of the yielded item with the rest of the stream; or rather it is itself the trivial singleton stream. `Streaming.Prelude` is focused on the manipulation of this all-important stream-form, which appears in the streaming IO libraries under titles like:
+Of course, as soon as you grasp the general form of *succession*, you are already in possession of the most basic concrete form: a simple *succession of individual Haskell values* one after another. This is just `Stream ((,) a) m r`, or as we write it here, `Stream (Of a) m r`, strictifying the left element of the pair. The pairing just links the present element with the rest of the stream. The primitive `yield` statement just expresses the pairing of the yielded item with the rest of the stream; or rather it is itself the trivial singleton stream. `Streaming.Prelude` is focused on the manipulation of this all-important stream-form, which appears in the streaming IO libraries under titles like:
 
     io-streams: Generator a r
     pipes:      Producer a m r
     conduit:    ConduitM () o m r
     streaming:  Stream (Of a) m r
 
-The only difference is that in `streaming` the simple Generator or Producer concept is formulated explicitly in terms of the *general* concept of successive connection. But this is a concept you need and already possess anyway, as your comprehension of the four sentences above showed.
+The only difference is that in `streaming` the simple Generator or Producer concept is formulated explicitly in terms of the *general* concept of successive connection. But this is a concept you need and already possess anyway.
 
 The special case of a *stream of individual Haskell values* that simply *comes to an end without a special result* is variously expressed thus:
 
-    io-streams: InputStream a 
+    io-streams: InputStream a
     pipes:      Producer a m ()
     conduit:    Source m a
     machines:   SourceT m a (= forall k. MachineT m k a)
@@ -42,7 +42,7 @@ The special case of a *stream of individual Haskell values* that simply *comes t
 `Streaming.Prelude`
 -------------------
 
-`Streaming.Prelude` closely follows `Pipes.Prelude`. But since it restricts itself to use only of the general idea of streaming, it cleverly \_omits the pipes/:
+`Streaming.Prelude` closely follows `Pipes.Prelude`. But since it restricts itself to use only of the general idea of streaming, it cleverly *omits the pipes*:
 
     ghci> S.stdoutLn $ S.take 2 S.stdinLn
     let's<Enter>
@@ -50,7 +50,7 @@ The special case of a *stream of individual Haskell values* that simply *comes t
     stream<Enter>
     stream
 
-Here's a little \_connect and resume/, as the streaming-io experts call it:
+Here's a little "connect and resume", as the streaming-io experts call it:
 
     ghci> rest <- S.print $ S.splitAt 3 $ S.each [1..10]
     1
@@ -77,12 +77,12 @@ These concepts are "functor general", in the jargon used in the documentation, a
     Prelude.break           :: (a -> Bool) -> [a]               -> ([a],[a])
     Streaming.Prelude.break :: (a -> Bool) -> Stream (Of a) m r -> Stream (Of a) m (Stream (Of a) m r)
 
-It is easy to prove that \_resistance to these types is resistance to effectful streaming itself/. I will labor this point a bit more below, but you can also find it developed, with greater skill, in the documentation for the pipes libraries.
+It is easy to prove that *resistance to these types is resistance to effectful streaming itself*. I will labor this point a bit more below, but you can also find it developed, with greater skill, in the documentation for the pipes libraries.
 
 How come there's not one of those fancy "ListT done right" implementations in here?
 -----------------------------------------------------------------------------------
 
-The use of the final return value appears to be a complication, but in fact it is essentially contained in the idea of effectful streaming. This is why this library does not export a \_ListT done right/, which would be simple enough - following `pipes`, as usual:
+The use of the final return value appears to be a complication, but in fact it is essentially contained in the idea of effectful streaming. This is why this library does not export a "ListT done right", which would be simple enough - following `pipes`, as usual:
 
     newtype ListT m a = ListT (Stream (Of a) m ())
 
@@ -98,10 +98,9 @@ Note similarly that you can write a certain kind of [take](http://hackage.haskel
 Didn't I hear that free monads are a dog from the point of view of efficiency?
 ------------------------------------------------------------------------------
 
-We noted above that if we instantiate `Stream f m r` to `Stream ((,) a) m r` or the like, we get the standard idea of a producer or generator. If it is instantiated to `Stream f Identity m r` then we have the standard \_free monad construction/. This construction is subject to certain familiar objections from an efficiency perspective; efforts have been made to substitute exotic cps-ed implementations and so forth. It is an interesting topic.
+We noted above that if we instantiate `Stream f m r` to `Stream ((,) a) m r` or the like, we get the standard idea of a producer or generator. If it is instantiated to `Stream f Identity m r` then we have the standard *free monad construction*. This construction is subject to certain familiar objections from an efficiency perspective; efforts have been made to substitute exotic cps-ed implementations and so forth. It is an interesting topic.
 
-But in fact, the standard alarmist talk about *retraversing binds* and *quadratic explosions* and *costly appends*, and so on become transparent nonsense with `Stream f m r`\
-in its streaming use. The conceptual power needed to see this is basically nil: Where `m` is read as `IO`, or some transformed `IO`, then the dreaded *retraversing of the binds* in a stream expression would involve repeating all the past actions. Don't worry, to get e.g. the second chunk of bytes from a handle, you won't need to start over and get the first one again! The first chunk has vanished into an unrepeatable past.
+But in fact, the standard alarmist talk about *retraversing binds* and *quadratic explosions* and *costly appends*, and so on become transparent nonsense with `Stream f m r` in its streaming use. The conceptual power needed to see this is basically nil: Where `m` is read as `IO`, or some transformed `IO`, then the dreaded *retraversing of the binds* in a stream expression would involve repeating all the past actions. Don't worry, to get e.g. the second chunk of bytes from a handle, you won't need to start over and get the first one again! The first chunk has vanished into an unrepeatable past.
 
 All of the difficulties a streaming library is attempting to avoid are concentrated in the deep irrationality of
 
@@ -131,7 +130,7 @@ which is what we find in our diseased base libraries. But once you know how to o
 
 and
 
-    getContents :: IO String 
+    getContents :: IO String
 
 but, omitting consideration of eof, we might define `getContents` thus
 
@@ -159,7 +158,7 @@ I get, for example:
 
 and can dispense with half the advice they will give you on `#haskell`. It is only a slight exaggeration to say that a stream should never be "extracted from IO".
 
-With `sequence` and `traverse`, we accumulate a pure succession of pure values from a pure succession of monadic values.\
+With `sequence` and `traverse`, we accumulate a pure succession of pure values from a pure succession of monadic values.
 Why bother if you have intrinsically monadic conception of succession or traversal? `Stream f m r` gives you an immense body of such structures and a simple discipline for working with them. Spinkle `id` freely though your program if you get homesick.
 
 Interoperation with the streaming-io libraries
@@ -168,7 +167,7 @@ Interoperation with the streaming-io libraries
 The simplest form of interoperation with [pipes](http://hackage.haskell.org/package/pipes) is accomplished with this isomorphism:
 
     Pipes.unfoldr Streaming.next        :: Stream (Of a) m r   -> Producer a m r
-    Streaming.unfoldr Pipes.next        :: Producer a m r      -> Stream (Of a) m r                     
+    Streaming.unfoldr Pipes.next        :: Producer a m r      -> Stream (Of a) m r
 
 Of course, `streaming` can be mixed with `pipes` wherever `pipes` itself employs `Control.Monad.Trans.Free`; speedups are frequently appreciable. (This was the original purpose of the main `Streaming` module, which just mechanically transposes a simple optimization employed in `Pipes.Internal`.) Interoperation with [io-streams](http://hackage.haskell.org/package/io-streams) is thus:
 
@@ -184,7 +183,7 @@ These conversions should never be more expensive than a single `>->` or `=$=`.
 At a much more general level, we also of course have interoperation with [free](http://hackage.haskell.org/package/free):
 
     Free.iterTM  Stream.wrap              :: FreeT f m a -> Stream f m a
-    Stream.iterTM Free.wrap               :: Stream f m a -> FreeT f m a 
+    Stream.iterTM Free.wrap               :: Stream f m a -> FreeT f m a
 
 Where can I find examples of use?
 ---------------------------------
@@ -217,12 +216,12 @@ There is also a still-incomplete `Prelude` of functions, some `FreeT` or `Stream
 
 I ran a simple [benchmark](https://gist.github.com/michaelt/7f89dc8b366b30bb6acc) (adjusting a [script](https://github.com/jwiegley/streaming-tests) of John Weigly) using a very simple composition of functions:
 
-    toList 
-    . filter (\x -> x `mod` 2 == 0) 
-    . map (+1) 
-    . drop 1000 
-    . map (+1) 
-    . filter even 
+    toList
+    . filter (\x -> x `mod` 2 == 0)
+    . map (+1)
+    . drop 1000
+    . map (+1)
+    . filter even
     . each
 
 The the results were fairly pleasing:
