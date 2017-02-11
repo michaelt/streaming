@@ -380,10 +380,10 @@ all thus = loop True where
   loop b str = case str of
     Return r -> return (b :> r)
     Effect m -> m >>= loop b
-    Step (a :> rest) -> if thus a
-      then loop True rest
+    Step (a :> rest) k -> if thus a
+      then loop True (k rest)
       else do
-        r <- effects rest
+        r <- effects (k rest)
         return (False :> r)
 {-#INLINABLE all #-}
 
@@ -392,8 +392,8 @@ all_ thus = loop True where
   loop b str = case str of
     Return r -> return b
     Effect m -> m >>= loop b
-    Step (a :> rest) -> if thus a
-      then loop True rest
+    Step (a :> rest) k -> if thus a
+      then loop True (k rest)
       else return False
 {-#INLINABLE all_ #-}
 
@@ -403,11 +403,11 @@ any thus = loop False where
   loop b str = case str of
     Return r -> return (b :> r)
     Effect m -> m >>= loop b
-    Step (a :> rest) -> if thus a
+    Step (a :> rest) k -> if thus a
       then do
-        r <- effects rest
+        r <- effects (k rest)
         return (True :> r)
-      else loop False rest
+      else loop False (k rest)
 {-#INLINABLE any #-}
 
 any_ :: Monad m => (a -> Bool) -> Stream (Of a) m r -> m Bool
@@ -415,9 +415,9 @@ any_ thus = loop False where
   loop b str = case str of
     Return r -> return b
     Effect m -> m >>= loop b
-    Step (a :> rest) -> if thus a
+    Step (a :> rest) k -> if thus a
       then return True
-      else loop False rest
+      else loop False (k rest)
 {-#INLINABLE any_ #-}
 
 {-| Break a sequence upon meeting element falls under a predicate,
@@ -438,9 +438,9 @@ break pred = loop where
   loop str = case str of
     Return r         -> Return (Return r)
     Effect m          -> Effect $ liftM loop m
-    Step (a :> rest) -> if (pred a)
-      then Return (Step (a :> rest))
-      else Step (a :> loop rest)
+    Step (a :> rest) k -> if (pred a)
+      then Return (Step (a :> rest) k)
+      else Step (a :> loop (k rest)) id
 {-# INLINABLE break #-}
 
 {-| Yield elements, using a fold to maintain state, until the accumulated
@@ -468,16 +468,16 @@ breakWhen step begin done pred = loop0 begin
     loop0 x stream = case stream of
         Return r -> return (return r)
         Effect mn  -> Effect $ liftM (loop0 x) mn
-        Step (a :> rest) -> loop a (step x a) rest
+        Step (a :> rest) k -> loop a (step x a) (k rest)
     loop a !x stream = do
       if pred (done x)
         then return (yield a >> stream)
         else case stream of
           Return r -> yield a >> return (return r)
           Effect mn  -> Effect $ liftM (loop a x) mn
-          Step (a' :> rest) -> do
+          Step (a' :> rest) k -> do
             yield a
-            loop a' (step x a') rest
+            loop a' (step x a') (k rest)
 {-# INLINABLE breakWhen #-}
 
 -- -- Break during periods where the predicate is not satisfied, grouping the periods when it is.
@@ -501,7 +501,7 @@ breaks thus  = loop  where
       Left   r      -> Return r
       Right (a, p') ->
        if not (thus a)
-          then Step $ fmap loop (yield a >> break thus p')
+          then Step (yield a >> break thus p') loop
           else loop p'
 {-#INLINABLE breaks #-}
 
@@ -521,9 +521,9 @@ chain f = loop where
   loop str = case str of
     Return r -> return r
     Effect mn  -> Effect (liftM loop mn)
-    Step (a :> rest) -> Effect $ do
+    Step (a :> rest) k -> Effect $ do
       f a
-      return (Step (a :> loop rest))
+      return (Step (a :> loop (k rest)) id)
 {-# INLINABLE chain #-}
 
 {-| Make a stream of traversable containers into a stream of their separate elements.
@@ -568,7 +568,7 @@ concat str = for str each
 -}
 
 cons :: (Monad m) => a -> Stream (Of a) m r -> Stream (Of a) m r
-cons a str = Step (a :> str)
+cons a str = Step (a :> str) id
 {-# INLINE cons #-}
 
 {- | Cycle repeatedly through the layers of a stream, /ad inf./ This
@@ -666,7 +666,7 @@ drop n str = loop n str where
   loop n stream = case stream of
       Return r       -> Return r
       Effect ma      -> Effect (liftM (loop n) ma)
-      Step (a :> as) -> loop (n-1) as
+      Step (a :> as) k -> loop (n-1) (k as)
 {-# INLINABLE drop #-}
 
 -- ---------------
@@ -691,9 +691,9 @@ dropWhile pred = loop where
   loop stream = case stream of
     Return r       -> Return r
     Effect ma       -> Effect (liftM loop ma)
-    Step (a :> as) -> if pred a
-      then loop as
-      else Step (a :> as)
+    Step (a :> as) k -> if pred a
+      then loop (k as)
+      else Step (a :> as) k
 {-# INLINABLE dropWhile #-}
 
 -- ---------------
@@ -710,7 +710,7 @@ dropWhile pred = loop where
 
 -}
 each :: (Monad m, Foldable.Foldable f) => f a -> Stream (Of a) m ()
-each = Foldable.foldr (\a p -> Step (a :> p)) (Return ())
+each = Foldable.foldr (\a p -> Step (a :> p) id) (Return ())
 {-# INLINABLE each #-}
 
 
@@ -739,7 +739,7 @@ effects = loop where
   loop stream = case stream of
     Return r         -> return r
     Effect m         -> m >>= loop
-    Step (_ :> rest) -> loop rest
+    Step (_ :> rest) k -> loop (k rest)
 {-#INLINABLE effects #-}
 
 {-| Exhaust a stream remembering only whether @a@ was an element.
@@ -752,10 +752,10 @@ elem a' = loop False where
   loop False str = case str of
     Return r -> return (False :> r)
     Effect m -> m >>= loop False
-    Step (a:> rest) ->
+    Step (a:> rest) k ->
       if a == a'
-        then liftM (True :>) (effects rest)
-        else loop False rest
+        then liftM (True :>) (effects (k rest))
+        else loop False (k rest)
 {-#INLINABLE elem #-}
 
 elem_ :: (Monad m, Eq a) => a -> Stream (Of a) m r -> m Bool
@@ -764,10 +764,10 @@ elem_ a' = loop False where
   loop False str = case str of
     Return r -> return False
     Effect m -> m >>= loop False
-    Step (a:> rest) ->
+    Step (a:> rest) k ->
       if a == a'
         then return True
-        else loop False rest
+        else loop False (k rest)
 {-#INLINABLE elem_ #-}
 
 -- -----
@@ -793,7 +793,7 @@ elem_ a' = loop False where
 -}
 enumFrom :: (Monad m, Enum n) => n -> Stream (Of n) m r
 enumFrom = loop where
-  loop !n = Effect (return (Step (n :> loop (succ n))))
+  loop !n = Effect (return (Step (n :> loop (succ n)) id))
 {-# INLINABLE enumFrom #-}
 
 
@@ -812,7 +812,7 @@ enumFromThen first second = Streaming.Prelude.map toEnum (loop _first)
     _first = fromEnum first
     _second = fromEnum second
     diff = _second - _first
-    loop !s =  Step (s :> loop (s+diff))
+    loop !s =  Step (s :> loop (s+diff)) id
 {-# INLINABLE enumFromThen #-}
 
 -- ---------------
@@ -825,7 +825,7 @@ erase = loop where
   loop str = case str of
     Return r -> Return r
     Effect m -> Effect (liftM loop m)
-    Step (a:>rest) -> Step (Identity (loop rest))
+    Step (a:>rest) k -> Step (Identity (loop (k rest))) id
 {-# INLINABLE erase #-}
 
 -- ---------------
@@ -838,9 +838,9 @@ filter pred = loop where
   loop str = case str of
     Return r       -> Return r
     Effect m       -> Effect (liftM loop m)
-    Step (a :> as) -> if pred a
-                         then Step (a :> loop as)
-                         else loop as
+    Step (a :> as) k -> if pred a
+                         then Step (a :> loop (k as)) id
+                         else loop (k as)
 {-# INLINE filter #-}  -- ~ 10% faster than INLINABLE in simple bench
 
                          
@@ -854,11 +854,11 @@ filterM pred = loop where
   loop str = case str of
     Return r       -> Return r
     Effect m       -> Effect $ liftM loop m
-    Step (a :> as) -> Effect $ do
+    Step (a :> as) k -> Effect $ do
       bool <- pred a
       if bool
-        then return $ Step (a :> loop as)
-        else return $ loop as
+        then return $ Step (a :> loop (k as)) id
+        else return $ loop (k as)
 {-# INLINE filterM #-}  -- ~ 10% faster than INLINABLE in simple bench
 
 -- -- ---------------
@@ -975,7 +975,7 @@ fold step begin done str =  fold_loop str begin
     fold_loop stream !x = case stream of
       Return r         -> return (done x :> r)
       Effect m         -> m >>= \str' -> fold_loop str' x
-      Step (a :> rest) -> fold_loop rest $! step x a
+      Step (a :> rest) k -> fold_loop (k rest) $! step x a
 {-# INLINE fold #-}
 
 
@@ -1011,9 +1011,9 @@ foldM step begin done str = do
     loop stream !x = case stream of
       Return r         -> done x >>= \b -> return (b :> r)
       Effect m          -> m >>= \s -> loop s x
-      Step (a :> rest) -> do
+      Step (a :> rest) k -> do
         x' <- step x a
-        loop rest x'
+        loop (k rest) x'
 {-# INLINABLE foldM #-}
 
 -- the following requires GHC.Magic.oneShot:
@@ -1046,7 +1046,7 @@ foldrT step = loop where
   loop stream = case stream of
     Return r       -> return r
     Effect m       -> lift m >>= loop
-    Step (a :> as) -> step a (loop as)
+    Step (a :> as) k -> step a (loop (k as))
 {-# INLINABLE foldrT #-}
 
 {-| A natural right fold for consuming a stream of elements.
@@ -1059,7 +1059,7 @@ foldrM step = loop where
   loop stream = case stream of
     Return r       -> return r
     Effect m       -> m >>= loop
-    Step (a :> as) -> step a (loop as)
+    Step (a :> as) k -> step a (loop (k as))
 {-# INLINABLE foldrM #-}
 
 -- ---------------
@@ -1073,9 +1073,9 @@ for str0 act = loop str0 where
   loop str = case str of
     Return r         -> Return r
     Effect m          -> Effect $ liftM loop m
-    Step (a :> rest) -> do
+    Step (a :> rest) k -> do
       act a
-      loop rest
+      loop (k rest)
 {-# INLINABLE for #-}
 
 -- -| Group layers of any functor by comparisons on a preliminary annotation
@@ -1125,8 +1125,7 @@ groupBy equals = loop  where
         e <- next stream
         return $ case e of
             Left   r      -> Return r
-            Right (a, p') -> Step $
-                fmap loop (yield a >> span (equals a) p')
+            Right (a, p') -> Step (yield a >> span (equals a) p') loop
 {-# INLINABLE groupBy #-}
 
 
@@ -1148,26 +1147,26 @@ head :: Monad m => Stream (Of a) m r -> m (Of (Maybe a) r)
 head str = case str of
   Return r            -> return (Nothing :> r)
   Effect m            -> m >>= head
-  Step (a :> rest)    -> effects rest >>= \r -> return (Just a :> r)
+  Step (a :> rest) k  -> effects (k rest) >>= \r -> return (Just a :> r)
 {-#INLINABLE head #-}
 
 head_ :: Monad m => Stream (Of a) m r -> m (Maybe a)
 head_ str = case str of
   Return r            -> return Nothing
   Effect m            -> m >>= head_
-  Step (a :> rest)    -> effects rest >> return (Just a)
+  Step (a :> rest) k  -> effects (k rest) >> return (Just a)
 {-#INLINABLE head_ #-}
 
 intersperse :: Monad m => a -> Stream (Of a) m r -> Stream (Of a) m r
 intersperse x str = case str of
     Return r -> Return r
     Effect m -> Effect (liftM (intersperse x) m)
-    Step (a :> rest) -> loop a rest
+    Step (a :> rest) k -> loop a (k rest)
   where
   loop !a str = case str of
-    Return r -> Step (a :> Return r)
+    Return r -> Step (a :> Return r) id
     Effect m -> Effect (liftM (loop a) m)
-    Step (b :> rest) -> Step (a :> Step (x :> loop b rest))
+    Step (b :> rest) k -> Step (a :> Step (x :> loop b (k rest)) id) id
 {-#INLINABLE intersperse #-}
 
 
@@ -1184,7 +1183,7 @@ intersperse x str = case str of
 -}
 iterate :: Monad m => (a -> a) -> a -> Stream (Of a) m r
 iterate f = loop where
-  loop a' = Effect (return (Step (a' :> loop (f a'))))
+  loop a' = Effect (return (Step (a' :> loop (f a')) id))
 {-# INLINABLE iterate #-}
 
 -- | Iterate a monadic function from a seed value, streaming the results forever
@@ -1192,7 +1191,7 @@ iterateM :: Monad m => (a -> m a) -> m a -> Stream (Of a) m r
 iterateM f = loop where
   loop ma  = Effect $ do
     a <- ma
-    return (Step (a :> loop (f a)))
+    return (Step (a :> loop (f a)) id)
 {-# INLINABLE iterateM #-}
 
 
@@ -1204,7 +1203,7 @@ last = loop Nothing_ where
       Nothing_ -> return (Nothing :> r)
       Just_ a  -> return (Just a :> r)
     Effect m            -> m >>= loop mb
-    Step (a :> rest)  -> loop (Just_ a) rest
+    Step (a :> rest) k  -> loop (Just_ a) (k rest)
 {-#INLINABLE last #-}
 
 
@@ -1216,7 +1215,7 @@ last_ = loop Nothing_ where
       Nothing_ -> return Nothing
       Just_ a  -> return (Just a)
     Effect m            -> m >>= loop mb
-    Step (a :> rest)  -> loop (Just_ a) rest
+    Step (a :> rest) k  -> loop (Just_ a) (k rest)
 {-#INLINABLE last_ #-}
 
 
@@ -1287,9 +1286,9 @@ mapM f = loop where
   loop str = case str of
     Return r       -> Return r
     Effect m        -> Effect (liftM loop m)
-    Step (a :> as) -> Effect $ do
+    Step (a :> as) k -> Effect $ do
       a' <- f a
-      return (Step (a' :> loop as) )
+      return (Step (a' :> loop (k as)) id )
 {-# INLINABLE mapM #-}
 
 
@@ -1315,9 +1314,9 @@ mapM_ f = loop where
   loop str = case str of
     Return r       -> return r
     Effect m        -> m >>= loop
-    Step (a :> as) -> do
+    Step (a :> as) k -> do
       f a
-      loop as
+      loop (k as)
 {-# INLINABLE mapM_ #-}
 
 
@@ -1418,7 +1417,7 @@ next = loop where
   loop stream = case stream of
     Return r         -> return (Left r)
     Effect m          -> m >>= loop
-    Step (a :> rest) -> return (Right (a,rest))
+    Step (a :> rest) k -> return (Right (a,k rest))
 {-# INLINABLE next #-}
 
 
@@ -1432,10 +1431,10 @@ notElem a' = loop True where
   loop True str = case str of
     Return r -> return (True:> r)
     Effect m -> m >>= loop True
-    Step (a:> rest) ->
+    Step (a:> rest) k ->
       if a == a'
-        then liftM (False :>) (effects rest)
-        else loop True rest
+        then liftM (False :>) (effects (k rest))
+        else loop True (k rest)
 {-#INLINABLE notElem #-}
 
 notElem_ :: (Monad m, Eq a) => a -> Stream (Of a) m r -> m Bool
@@ -1444,10 +1443,10 @@ notElem_ a' = loop True where
   loop True str = case str of
     Return r -> return True
     Effect m -> m >>= loop True
-    Step (a:> rest) ->
+    Step (a:> rest) k ->
       if a == a'
         then return False
-        else loop True rest
+        else loop True (k rest)
 {-#INLINABLE notElem_ #-}
 
 
@@ -1460,11 +1459,11 @@ partition thus = loop where
    loop str = case str of
      Return r -> Return r
      Effect m -> Effect (liftM loop (lift m))
-     Step (a :> rest) -> if thus a
-       then Step (a :> loop rest)
+     Step (a :> rest) k -> if thus a
+       then Step (a :> loop (k rest)) id
        else Effect $ do
                yield a
-               return (loop rest)
+               return (loop (k rest))
 
 
 {-| Separate left and right values in distinct streams. ('separate' is
@@ -1492,10 +1491,10 @@ partitionEithers =  loop where
    loop str = case str of
      Return r -> Return r
      Effect m -> Effect (liftM loop (lift m))
-     Step (Left a :> rest) -> Step (a :> loop rest)
-     Step (Right b :> rest) -> Effect $ do
+     Step (Left a :> rest) k -> Step (a :> loop (k rest)) id
+     Step (Right b :> rest) k -> Effect $ do
        yield b
-       return (loop rest)
+       return (loop (k rest))
 
 
 -- | Fold a 'Stream' of numbers into their product
@@ -1544,7 +1543,7 @@ read stream = for stream $ \str -> case readMaybe str of
 -}
 
 repeat :: Monad m => a -> Stream (Of a) m r
-repeat a = loop where loop = Effect (return (Step (a :> loop)))
+repeat a = loop where loop = Effect (return (Step (a :> loop) id))
 {-# INLINE repeat #-}
 
 
@@ -1574,7 +1573,7 @@ replicate :: Monad m => Int -> a -> Stream (Of a) m ()
 replicate n a | n <= 0 = return ()
 replicate n a = loop n where
   loop 0 = Return ()
-  loop m = Effect (return (Step (a :> loop (m-1))))
+  loop m = Effect (return (Step (a :> loop (m-1)) id))
 {-# INLINABLE replicate #-}
 
 {-| Repeat an action several times, streaming its results.
@@ -1590,7 +1589,7 @@ replicateM n ma = loop n where
   loop 0 = Return ()
   loop n = Effect $ do
     a <- ma
-    return (Step (a :> loop (n-1)))
+    return (Step (a :> loop (n-1)) id)
 {-# INLINABLE replicateM #-}
 
 {-| Read an @IORef (Maybe a)@ or a similar device until it reads @Nothing@.
@@ -1605,7 +1604,7 @@ reread step s = loop where
     m <- step s
     case m of
       Nothing -> return (Return ())
-      Just a  -> return (Step (a :> loop))
+      Just a  -> return (Step (a :> loop) id)
 {-# INLINABLE reread #-}
 
 {-| Strict left scan, streaming, e.g. successive partial results. The seed 
@@ -1629,15 +1628,15 @@ reread step s = loop where
 
 -}
 scan :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Stream (Of a) m r -> Stream (Of b) m r
-scan step begin done str = Step (done begin :> loop begin str)
+scan step begin done str = Step (done begin :> loop begin str) id
   where                   
   loop !acc stream = do
     case stream of
       Return r -> Return r
       Effect m -> Effect (liftM (loop acc) m)
-      Step (a :> rest) -> 
+      Step (a :> rest) k -> 
         let !acc' = step acc a 
-        in Step (done acc' :> loop acc' rest)
+        in Step (done acc' :> loop acc' (k rest)) id
 {-#INLINABLE scan #-}
 
 {-| Strict left scan, accepting a monadic function. It can be used with
@@ -1657,7 +1656,7 @@ scanM :: Monad m => (x -> a -> m x) -> m x -> (x -> m b) -> Stream (Of a) m r ->
 scanM step begin done str = Effect $ do
     x <- begin
     b <- done x
-    return (Step (b :> loop x str))  
+    return (Step (b :> loop x str) id)  
   where
     loop !x stream = case stream of -- note we have already yielded from x
       Return r -> Return r
@@ -1665,10 +1664,10 @@ scanM step begin done str = Effect $ do
         stream' <- m
         return (loop x stream')
         )
-      Step (a :> rest) -> Effect (do
+      Step (a :> rest) k -> Effect (do
         x' <- step x a
         b   <- done x'
-        return (Step (b :> loop x' rest))
+        return (Step (b :> loop x' (k rest)) id)
         )
 {-# INLINABLE scanM #-}
 
@@ -1696,16 +1695,16 @@ scanned step begin done = loop Nothing' begin
       case stream of
         Return r -> return r
         Effect mn  -> Effect $ liftM (loop m x) mn
-        Step (a :> rest) -> do
+        Step (a :> rest) k -> do
           case m of
             Nothing' -> do
               let !acc = step x a
               yield (a, done acc)
-              loop (Just' a) acc rest
+              loop (Just' a) acc (k rest)
             Just' _ -> do
               let !acc = done (step x a)
               yield (a, acc)
-              loop (Just' a) (step x a) rest
+              loop (Just' a) (step x a) (k rest)
 {-# INLINABLE scanned #-}
 
 
@@ -1768,9 +1767,9 @@ sequence = loop where
   loop stream = case stream of
     Return r          -> Return r
     Effect m           -> Effect $ liftM loop m
-    Step (ma :> rest) -> Effect $ do
+    Step (ma :> rest) k -> Effect $ do
       a <- ma
-      return (Step (a :> loop rest))
+      return (Step (a :> loop (k rest)) id)
 {-# INLINABLE sequence #-}
 
 -- ---------------
@@ -1824,9 +1823,9 @@ span pred = loop where
   loop str = case str of
     Return r         -> Return (Return r)
     Effect m          -> Effect $ liftM loop m
-    Step (a :> rest) -> if pred a
-      then Step (a :> loop rest)
-      else Return (Step (a :> rest))
+    Step (a :> rest) k -> if pred a
+      then Step (a :> loop (k rest)) id
+      else Return (Step (a :> rest) k)
 {-# INLINABLE span #-}
 
 
@@ -1845,10 +1844,10 @@ split t  = loop  where
   loop stream = case stream of
     Return r -> Return r
     Effect m -> Effect (liftM loop m)
-    Step (a :> rest) ->
+    Step (a :> rest) k ->
          if a /= t
-            then Step (fmap loop (yield a >> break (== t) rest))
-            else loop rest
+            then Step (yield a >> break (== t) (k rest)) loop
+            else loop (k rest)
 {-#INLINABLE split #-}
 
 {-| Split a succession of layers after some number, returning a streaming or
@@ -1880,7 +1879,7 @@ subst f s = loop s where
   loop str = case str of
     Return r         -> Return r
     Effect m         -> Effect (liftM loop m)
-    Step (a :> rest) -> Step (loop rest <$ f a)
+    Step (a :> rest) k -> Step (loop (k rest) <$ f a) id
 {-#INLINABLE subst #-}
 -- ---------------
 -- take
@@ -1908,7 +1907,7 @@ take n0 str | n0 <= 0 = return ()
 take n0 str = loop n0 str where
   loop 0 p = return ()
   loop n p =
-    case p of Step fas -> Step (fmap (loop (n-1)) fas)
+    case p of Step fas k -> Step fas (loop (n-1) . k)
               Effect m -> Effect (liftM (loop n) m)
               Return r -> Return ()
 {-# INLINABLE take #-}
@@ -1935,7 +1934,7 @@ take n0 str = loop n0 str where
 takeWhile :: Monad m => (a -> Bool) -> Stream (Of a) m r -> Stream (Of a) m ()
 takeWhile pred = loop where
   loop str = case str of
-    Step (a :> as) -> when (pred a) (Step (a :> loop as))
+    Step (a :> as) k -> when (pred a) (Step (a :> loop (k as)) id)
     Effect m              -> Effect (liftM loop m)
     Return r              -> Return ()
 {-# INLINE takeWhile #-}
@@ -1944,9 +1943,9 @@ takeWhile pred = loop where
 takeWhileM :: Monad m => (a -> m Bool) -> Stream (Of a) m r -> Stream (Of a) m ()
 takeWhileM pred = loop where
   loop str = case str of
-    Step (a :> as) -> do
+    Step (a :> as) k -> do
       b <- lift (pred a)
-      when b (Step (a :> loop as))
+      when b (Step (a :> loop (k as)) id)
     Effect m -> Effect (liftM loop m)
     Return r -> Return ()
 {-# INLINE takeWhileM #-}
@@ -2001,7 +2000,7 @@ uncons = loop where
   loop stream = case stream of
     Return ()        -> return Nothing
     Effect m          -> m >>= loop
-    Step (a :> rest) -> return (Just (a,rest))
+    Step (a :> rest) k -> return (Just (a,k rest))
 {-# INLINABLE uncons #-}
 
 
@@ -2039,7 +2038,7 @@ unfoldr step = loop where
     e <- step s0
     case e of
       Left r      -> return (Return r)
-      Right (a,s) -> return (Step (a :> loop s)))
+      Right (a,s) -> return (Step (a :> loop s) id))
 {-# INLINABLE unfoldr #-}
 
 -- ---------------------------------------
@@ -2051,7 +2050,7 @@ untilRight act = Effect loop where
     e <- act
     case e of
       Right r -> return (Return r)
-      Left a -> return (Step (a :> Effect loop))
+      Left a -> return (Step (a :> Effect loop) id)
 {-#INLINABLE untilRight #-}
 
 -- ---------------------------------------
@@ -2078,7 +2077,7 @@ with s f = loop s where
   loop str = case str of
     Return r         -> Return r
     Effect m         -> Effect (liftM loop m)
-    Step (a :> rest) -> Step (loop rest <$ f a)
+    Step (a :> rest) k -> Step (loop (k rest) <$ f a) id
 {-#INLINABLE with #-}
 
 -- ---------------------------------------
@@ -2106,7 +2105,7 @@ Enter a number:
 -}
 
 yield :: Monad m => a -> Stream (Of a) m ()
-yield a = Step (a :> Return ())
+yield a = Step (a :> Return ()) id
 {-# INLINE yield #-}
 
 -- | Zip two 'Streams's
@@ -2128,10 +2127,10 @@ zipWith f = loop
     loop str0 str1 = case str0 of
       Return r          -> Return r
       Effect m           -> Effect $ liftM (\str -> loop str str1) m
-      Step (a :> rest0) -> case str1 of
+      Step (a :> rest0) k0 -> case str1 of
         Return r          -> Return r
         Effect m           -> Effect $ liftM (loop str0) m
-        Step (b :> rest1) -> Step (f a b :>loop rest0 rest1)
+        Step (b :> rest1) k1 -> Step (f a b :>loop (k0 rest0) (k1 rest1)) id
 {-# INLINABLE zipWith #-}
 
 
@@ -2258,9 +2257,9 @@ toHandle handle = loop where
   loop str = case str of
     Return r         -> return r
     Effect m          -> m >>= loop
-    Step (s :> rest) -> do
+    Step (s :> rest) k -> do
       liftIO (IO.hPutStrLn handle s)
-      loop rest
+      loop (k rest)
 {-# INLINABLE toHandle #-}
 
 {-| Print the elements of a stream as they arise.
@@ -2278,9 +2277,9 @@ print = loop where
   loop stream = case stream of
     Return r         -> return r
     Effect m         -> m >>= loop
-    Step (a :> rest) -> do
+    Step (a :> rest) k -> do
       liftIO (Prelude.print a)
-      loop rest
+      loop (k rest)
 
 
 {-| Write 'String's to 'IO.stdout' using 'putStrLn'; terminates on a broken output pipe
@@ -2297,7 +2296,7 @@ stdoutLn = loop
     loop stream = case stream of
       Return _         -> return ()
       Effect m          -> m >>= loop
-      Step (s :> rest) -> do
+      Step (s :> rest) k -> do
         x   <- liftIO $ try (putStrLn s)
         case x of
            Left (G.IOError { G.ioe_type  = G.ResourceVanished
@@ -2305,7 +2304,7 @@ stdoutLn = loop
                 | Errno ioe == ePIPE
                     -> return ()
            Left  e  -> liftIO (throwIO e)
-           Right () -> loop rest
+           Right () -> loop (k rest)
 {-# INLINABLE stdoutLn #-}
 
 
@@ -2623,7 +2622,7 @@ copy = Effect . return . loop where
   loop str = case str of
     Return r         -> Return r
     Effect m         -> Effect (liftM loop (lift m))
-    Step (a :> rest) -> Effect (Step (a :> Return (Step (a :> loop rest))))
+    Step (a :> rest) k -> Effect (Step (a :> Return (Step (a :> loop (k rest)) id)) id)
 {-#INLINABLE copy#-}
 
 duplicate
@@ -2684,7 +2683,7 @@ unzip = loop where
  loop str = case str of
    Return r -> Return r
    Effect m -> Effect (liftM loop (lift m))
-   Step ((a,b):> rest) -> Step (a :> Effect (Step (b :> Return (loop rest))))
+   Step ((a,b):> rest) k -> Step (a :> Effect (Step (b :> Return (loop (k rest))) id)) id
 {-#INLINABLE unzip #-}
 
 
@@ -2703,9 +2702,9 @@ catMaybes = loop where
   loop stream = case stream of
     Return r -> Return r
     Effect m -> Effect (liftM loop m)
-    Step (ma :> snext) -> case ma of
-      Nothing -> loop snext
-      Just a -> Step (a :> loop snext)
+    Step (ma :> snext) k -> case ma of
+      Nothing -> loop (k snext)
+      Just a -> Step (a :> loop (k snext)) id
 {-#INLINABLE catMaybes #-}
 
 {-| The 'mapMaybe' function is a version of 'map' which can throw out elements. In particular,
@@ -2718,9 +2717,9 @@ mapMaybe phi = loop where
   loop stream = case stream of
     Return r -> Return r
     Effect m -> Effect (liftM loop m)
-    Step (a :> snext) -> case phi a of
-      Nothing -> loop snext
-      Just b -> Step (b :> loop snext)
+    Step (a :> snext) k -> case phi a of
+      Nothing -> loop (k snext)
+      Just b -> Step (b :> loop (k snext)) id
 {-#INLINABLE mapMaybe #-}
 
 {-| 'slidingWindow' accumulates the first @n@ elements of a stream, 
