@@ -223,6 +223,7 @@ module Streaming.Prelude (
     , fst'
     , snd'
     , mapOf
+    , uncurry'
     , _first
     , _second
 
@@ -364,6 +365,15 @@ False :> "hi"
 mapOf :: (a -> b) -> Of a r -> Of b r
 mapOf f (a:> b) = (f a :> b)
 {-#INLINE mapOf #-}
+
+{-| The analogue of 'uncurry' to apply a function to both elements of a left-strict pair.
+
+    This can be especially useful combined with functions like 'mapped'.
+
+-}
+uncurry' :: (a -> b -> c) -> Of a b -> c
+uncurry' f (a :> b) = f a b
+{-# INLINE uncurry' #-}
 
 {-| A lens into the first element of a left-strict pair -}
 _first :: Functor f => (a -> f a') -> Of a b -> f (Of a' b)
