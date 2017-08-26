@@ -34,6 +34,8 @@ module Streaming.Internal (
     -- * Transforming streams
     , maps
     , mapsM
+    , maps2
+    , mapsM2
     , decompose
     , mapsM_
     , run
@@ -489,8 +491,8 @@ maps phi = loop where
 {-# INLINABLE maps #-}
 
 
-{- | Map layers of one functor to another with a transformation involving the base monad
-     @maps@ is more fundamental than @mapsM@, which is best understood as a convenience
+{- | Map layers of one functor to another with a transformation involving the base monad.
+     'maps' is more fundamental than @mapsM@, which is best understood as a convenience
      for effecting this frequent composition:
 
 > mapsM phi = decompose . maps (Compose . phi)
@@ -507,6 +509,53 @@ mapsM phi = loop where
     Step f    -> Effect (liftM Step (phi (fmap loop f)))
 {-# INLINABLE mapsM #-}
 
+{- | Map layers of one functor to another with a transformation. Compare
+     hoist, which has a similar effect on the 'monadic' parameter.
+
+> maps2 id = id
+> maps2 f . maps2 g = maps2 (f . g)
+> maps2 f = maps2 f
+
+
+     @maps2@ is essentially the same as 'maps', but it imposes a 'Functor' constraint on
+     its target functor rather than its source functor. It should be preferred if 'fmap'
+     is cheaper for the target functor than for the source functor.
+-}
+maps2 :: forall m f g r. (Monad m, Functor g)
+      => (forall x. f x -> g x)
+      -> Stream f m r -> Stream g m r
+maps2 phi = loop where
+  loop :: Stream f m r -> Stream g m r
+  loop stream = case stream of
+    Return r -> Return r
+    Effect m -> Effect (liftM loop m)
+    Step f -> Step $ fmap loop $ phi f
+{-# INLINABLE maps2 #-}
+
+{- | Map layers of one functor to another with a transformation involving the base monad.
+     @mapsM2@ is essentially the same as 'mapsM', but it imposes a 'Functor' constraint on
+     its target functor rather than its source functor. It should be preferred if 'fmap'
+     is cheaper for the target functor than for the source functor.
+
+     @maps2@ is more fundamental than @mapsM2@, which is best understood as a convenience
+     for effecting this frequent composition:
+
+> mapsM2 phi = decompose . maps2 (Compose . phi)
+
+     The streaming prelude exports the same function under the better name @mapped2@,
+     which overlaps with the lens libraries.
+
+-}
+mapsM2 :: forall m f g r. (Monad m, Functor g)
+       => (forall x. f x -> m (g x))
+       -> Stream f m r -> Stream g m r
+mapsM2 phi = loop where
+  loop :: Stream f m r -> Stream g m r
+  loop stream = case stream of
+    Return r -> Return r
+    Effect m -> Effect (liftM loop m)
+    Step f -> Effect $ liftM (Step . fmap loop) (phi f)
+{-# INLINABLE mapsM2 #-}
 
 {-| Rearrange a succession of layers of the form @Compose m (f x)@.
 

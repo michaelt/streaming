@@ -19,8 +19,11 @@ module Streaming
 
    -- * Transforming streams
    maps,
+   maps2,
    mapsM,
+   mapsM2,
    mapped,
+   mapped2,
    distribute,
    groups,
 
