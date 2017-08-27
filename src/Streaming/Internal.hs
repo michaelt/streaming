@@ -101,6 +101,10 @@ import Control.Monad.Catch hiding (bracket, onException)
 import Control.Monad.Trans.Control
 import Data.Functor.Of
 import Data.IORef
+import GHC.Conc (pseq)
+import Unsafe.Coerce
+import Data.Function
+
 {- $stream
 
     The 'Stream' data type is equivalent to @FreeT@ and can represent any effectful
@@ -125,6 +129,10 @@ import Data.IORef
 data Stream f m r = Step !(f (Stream f m r))
                   | Effect (m (Stream f m r))
                   | Return r
+-- WARNING: If the definition of the Stream type is changed in any way
+-- whatsoever (including reordering constructors), then the definition
+-- of the StreamL type must be changed to match it, or the definition
+-- of 'never' must be scrapped.
 #if __GLASGOW_HASKELL__ >= 710
                   deriving (Typeable)
 #endif
@@ -1032,7 +1040,7 @@ groups = loop
 --       Right (InL fstr) -> wrap (fmap loop fstr)
 --       Right (InR gstr) -> return (wrap (InR gstr))
 
-{- | 'never' interleaves the pure applicative action with the return of the monad forever.
+{- | 'never' produces an infinite nest of 'pure' steps.
      It is the 'empty' of the 'Alternative' instance, thus
 
 > never <|> a = a
@@ -1098,9 +1106,54 @@ four<Enter>
 
 -}
 never :: (Monad m, Applicative f) => Stream f m r
-never =  let loop = Effect $ return $ Step $ pure loop in loop
-{-#INLINABLE never #-}
+-- The redundant Monad constraint ensures compatibility with
+-- FreeT and with the safer version of 'never' described below.
+-- It should probably be an Applicative constraint, but we
+-- still support old versions of base.
+never = never' pure
 
+
+{-
+This is the safe version of 'never':
+
+never :: (Monad m, Applicative f) => Stream f m r
+never =  fix $ Step . pure . Effect . return
+
+It interleaves pure monadic operations with the (pure) Applicative
+ones. If the monad isn't cheap enough, this is a bit sad. If Step
+were a lazy constructor, we'd just define
+
+never = fix $ Step . pure
+
+but this will fail to terminate if pure is strict, as for Identity.
+So we pull an extremely dirty trick. We make a type that looks
+*just like* Stream, but with a lazy Step constructor. We tie the
+knot with *that* type, force the contents of the Step, and then
+unsafeCoerce to magic it into an actual Stream. These shenanigans
+rely on the fact that the run-time representation of a constructor
+with a (non-unboxed, lifted) strict field is exactly the same as
+the representation of the similar constructor with a lazy field.
+If that ever changes (somehow), this implementation will break.
+I don't know just how aggressive we have to be with the NOINLINEs
+to make sure nothing goes wrong, so I just stuck them everywhere
+they'd fit. The pseq is probably overkill; I think seq should do.
+But I want to be *really sure* that the contents are forced before
+anyone gets a chance to match on it with a Step constructor;
+otherwise things could go blam.
+-}
+
+data StreamL f m r = StepL (f (StreamL f m r))
+                   | EffectL (m (StreamL f m r))
+                   | ReturnL r
+
+{-# NOINLINE never' #-}
+never' :: forall f m r. (forall a. a -> f a) -> Stream f m r
+never' pur = case loop of
+               StepL x -> x `pseq` unsafeCoerce loop
+  where
+    {-# NOINLINE loop #-}
+    loop :: StreamL f m r
+    loop = fix (StepL . pur)
 
 delays :: (MonadIO m, Applicative f) => Double -> Stream f m r
 delays seconds = loop where
