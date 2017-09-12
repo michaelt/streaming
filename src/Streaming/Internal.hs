@@ -36,6 +36,7 @@ module Streaming.Internal (
     , mapsM
     , maps2
     , mapsM2
+    , hoistUnexposed
     , decompose
     , mapsM_
     , run
@@ -72,6 +73,7 @@ module Streaming.Internal (
     -- *  For use in implementation
     , unexposed
     , hoistExposed
+    , hoistExposed2
     , mapsExposed
     , mapsMExposed
     , destroyExposed
@@ -241,6 +243,7 @@ instance Functor f => MFunctor (Stream f) where
       Effect m   -> Effect (trans (liftM loop m))
       Step f    -> Step (fmap loop f)
   {-# INLINABLE hoist #-}  
+
 
 instance Functor f => MMonad (Stream f) where
   embed phi = loop where
@@ -776,13 +779,40 @@ replicates n f = splitsAt n (repeats f) >> return ()
 cycles :: (Monad m, Functor f) =>  Stream f m () -> Stream f m r
 cycles = forever
 
+-- | A version of 'hoist' that works properly even when its
+-- argument is not a monad morphism.
+--
+-- > hoistUnexposed = hoist . unexposed
+hoistUnexposed :: (Monad m, Functor f) => (forall a. m a -> n a) -> Stream f m r -> Stream f n r
+hoistUnexposed trans = Effect . loop where
+  loop stream = trans $ do
+    rs <- inspect stream
+    case rs of
+      Left r -> return (Return r)
+      Right f -> return (Step (fmap (Effect . loop) f))
+{-# INLINABLE hoistUnexposed #-}
 
-
+-- | The same as 'hoist', but explicitly named to indicate that it
+-- is not entirely safe. In particular, its argument must be a monad
+-- morphism.
+hoistExposed :: (Functor m, Functor f) => (forall a. m a -> n a) -> Stream f m a -> Stream f n a
 hoistExposed trans = loop where
   loop stream = case stream of
     Return r  -> Return r
-    Effect m   -> Effect (trans (liftM loop m))
+    Effect m   -> Effect (trans (fmap loop m))
     Step f    -> Step (fmap loop f)
+{-# INLINABLE hoistExposed #-}
+
+-- | The same as 'hoistExposed', but with a 'Functor' constraint on
+-- the target rather than the source. This must be used only with
+-- a monad morphism.
+hoistExposed2 :: (Functor n, Functor f) => (forall a. m a -> n a) -> Stream f m a -> Stream f n a
+hoistExposed2 trans = loop where
+  loop stream = case stream of
+    Return r -> Return r
+    Effect m -> Effect (fmap loop (trans m))
+    Step f -> Step (fmap loop f)
+{-# INLINABLE hoistExposed2 #-}
 
 mapsExposed :: (Monad m, Functor f)
      => (forall x . f x -> g x) -> Stream f m r -> Stream g m r
