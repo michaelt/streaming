@@ -95,7 +95,9 @@ module Streaming.Prelude (
     , map
     , mapM
     , maps
+    , maps2
     , mapped
+    , mapped2
     , for
     , with
     , subst
@@ -1351,6 +1353,14 @@ mapped :: (Monad m, Functor f) => (forall x . f x -> m (g x)) -> Stream f m r ->
 mapped = mapsM
 {-#INLINE mapped #-}
 
+{-| A version of 'mapped' that imposes a 'Functor' constraint on the target functor rather
+    than the source functor. This version should be preferred if 'fmap' on the target
+    functor is cheaper.
+
+-}
+mapped2 :: (Monad m, Functor g) => (forall x . f x -> m (g x)) -> Stream f m r -> Stream g m r
+mapped2 = mapsM2
+{-# INLINE mapped2 #-}
 
 {-| Fold streamed items into their monoidal sum
 
