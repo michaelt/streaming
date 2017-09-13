@@ -779,18 +779,24 @@ replicates n f = splitsAt n (repeats f) >> return ()
 cycles :: (Monad m, Functor f) =>  Stream f m () -> Stream f m r
 cycles = forever
 
--- | A version of 'hoist' that works properly even when its
+-- | A less-efficient version of 'hoist' that works properly even when its
 -- argument is not a monad morphism.
 --
 -- > hoistUnexposed = hoist . unexposed
-hoistUnexposed :: (Monad m, Functor f) => (forall a. m a -> n a) -> Stream f m r -> Stream f n r
-hoistUnexposed trans = Effect . loop where
-  loop stream = trans $ do
-    rs <- inspect stream
-    case rs of
-      Left r -> return (Return r)
-      Right f -> return (Step (fmap (Effect . loop) f))
+hoistUnexposed :: (Monad m, Functor f)
+               => (forall a. m a -> n a)
+               -> Stream f m r -> Stream f n r
+hoistUnexposed trans = loop where
+  loop = Effect . trans . inspectC (pure . Return) (pure . Step . fmap loop)
 {-# INLINABLE hoistUnexposed #-}
+
+-- A version of 'inspect' that takes explicit continuations.
+inspectC :: Monad m => (r -> m a) -> (f (Stream f m r) -> m a) -> Stream f m r -> m a
+inspectC f g = loop where
+  loop (Return r) = f r
+  loop (Step x) = g x
+  loop (Effect m) = m >>= loop
+{-# INLINE inspectC #-}
 
 -- | The same as 'hoist', but explicitly named to indicate that it
 -- is not entirely safe. In particular, its argument must be a monad
