@@ -1,5 +1,5 @@
 name:                streaming
-version:             0.1.4.5
+version:             0.1.4.6
 cabal-version:       >=1.10
 build-type:          Simple
 synopsis:            an elementary streaming prelude and general stream type.
@@ -213,7 +213,7 @@ library
 
   build-depends:       base >=4.6 && <5
                      , mtl >=2.1 && <2.3
-                     , mmorph >=1.0 && <1.1
+                     , mmorph >=1.0 && <1.2
                      , transformers >=0.4 && <0.6
                      , transformers-base < 0.5
                      , resourcet > 1.1.0 && < 1.2
