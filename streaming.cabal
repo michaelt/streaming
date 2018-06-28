@@ -154,9 +154,9 @@ description:         This package contains two modules, <http://hackage.haskell.
                      <http://hackage.haskell.org/package/conduit conduit>
                      one might use, e.g.:
                      .
-                     > Conduit.unfoldM Streaming.uncons                        :: Stream (Of a) m () -> Source m a
-                     > \str -> Streaming.mapM_ Conduit.yield (hoist lift str)  :: Stream (Of o) m r  -> ConduitM i o m r
-                     > \src -> hoist lift str $$ Conduit.mapM_ Streaming.yield :: Source m a         -> Stream (Of a) m ()
+                     > Conduit.unfoldM Streaming.uncons                                         :: Stream (Of a) m () -> Source m a
+                     > \str -> Streaming.mapM_ Conduit.yield (transPipe lift str)               :: Stream (Of o) m r  -> ConduitM i o m r
+                     > \src -> runConduit $ transPipe lift src .| Conduit.mapM_ Streaming.yield :: Source m a         -> Stream (Of a) m ()
                      .
                      These conversions should never be more expensive than a single @>->@ or @=$=@.
                      The simplest interoperation with regular Haskell lists is provided by, say
