@@ -16,6 +16,12 @@ data Of a b = !a :> b
               Read, Show, Traversable, Typeable)
 infixr 5 :>
 
+#if MIN_VERSION_base(4,11,0)
+instance (Semigroup a, Semigroup b) => Semigroup (Of a b) where
+  (m :> w) <> (m' :> w') = (m <> m') :> (w <> w')
+  {-#INLINE (<>) #-}
+#endif
+
 instance (Monoid a, Monoid b) => Monoid (Of a b) where
   mempty = mempty :> mempty
   {-#INLINE mempty #-}

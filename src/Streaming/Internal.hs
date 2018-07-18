@@ -218,6 +218,12 @@ instance (Applicative f, Monad m) => Alternative (Stream f m) where
   str <|> str' = zipsWith (liftA2 (,)) str str'
   {-#INLINE (<|>) #-}
 
+#if MIN_VERSION_base(4,11,0)
+instance (Functor f, Monad m, Semigroup w) => Semigroup (Stream f m w) where
+  a <> b = a >>= \w -> fmap (w <>) b
+  {-#INLINE (<>) #-}
+#endif
+
 instance (Functor f, Monad m, Monoid w) => Monoid (Stream f m w) where
   mempty = return mempty
   {-#INLINE mempty #-}
